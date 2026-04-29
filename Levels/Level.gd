@@ -15,6 +15,7 @@ extends Node
 var startz: float = -50.0
 var road_spawnx: Array = [-2, 0, 2]
 var tree_startx: Array = [10, -10]
+var game_over: bool = false
 
 
 
@@ -107,7 +108,27 @@ func _on_road_spawn_timer_timeout():
 	($RoadSpawnTimer as Timer).wait_time = 1.85
 
 func on_player_entered_rock():
+	if game_over:
+		return
+
+	game_over = true
 	player.is_dead = true
 	print("Player died!")
 	get_tree().paused = true
+
+	player.show_death_ui(true, "3")
+	await get_tree().create_timer(1.0, true).timeout
+
+	player.show_death_ui(true, "2")
+	await get_tree().create_timer(1.0, true).timeout
+
+	player.show_death_ui(true, "1")
+	await get_tree().create_timer(1.0, true).timeout
+
+	player.show_death_ui(true, "Press Space to restart!")
+	while not Input.is_physical_key_pressed(KEY_SPACE):
+		await get_tree().create_timer(0.1, true).timeout
+
+	get_tree().paused = false
+	get_tree().reload_current_scene()
 

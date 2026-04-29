@@ -1,3 +1,7 @@
-res://Levels/Tmp.tscn
+res://Levels/Level.tscn
 res://assets/coin/coin.res
-res://README.md
+res://Player/Player.tscn
+res://Levels/Road/Road.tscn
+res://Levels/Rock/Rock.tscn
+res://Coins/Coin.tscn
+res://Levels/Tmp.tscn

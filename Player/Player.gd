@@ -3,6 +3,9 @@ extends CharacterBody3D
 @onready var audio_player: AudioStreamPlayer3D = $AudioStreamPlayer3D
 @onready var animation_player: AnimationPlayer = $Character/AnimationPlayer
 @onready var gui: Control = $gui
+@onready var death_overlay: ColorRect = $gui/death_overlay
+@onready var died_label: Label = $gui/died_label
+@onready var countdown_label: Label = $gui/countdown_label
 
 const MOVE_SPEED: float = 8.0
 const JUMP_VELOCITY: float = 8.0  # Jump strength
@@ -21,6 +24,11 @@ func _ready() -> void:
 	starting_point = global_transform.origin
 
 func _physics_process(delta: float) -> void:
+	if is_dead:
+		velocity = Vector3.ZERO
+		animation_player.play("Idle")
+		return
+
 	var direction: Vector3 = Vector3.ZERO
 	
 	# Handle lane switching
@@ -53,10 +61,6 @@ func _physics_process(delta: float) -> void:
 	else:
 		animation_player.play("Run")
 
-	if is_dead:
-		print('dead')
-		is_dead = false
-
 var coin_count: int = 0
 func _on_collision_area_entered(area):
 	var parent = area.get_parent()
@@ -65,3 +69,10 @@ func _on_collision_area_entered(area):
 		coin_count += 1
 		gui.get_node("label").text = "Coins: " + str(coin_count)
 		parent.queue_free()
+
+func show_death_ui(show_died: bool, countdown_text: String = "") -> void:
+	death_overlay.visible = show_died
+	died_label.visible = show_died
+	countdown_label.visible = countdown_text != ""
+	if countdown_text != "":
+		countdown_label.text = countdown_text
