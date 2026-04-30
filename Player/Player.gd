@@ -27,6 +27,9 @@ var is_jumping: bool = false
 var is_dead: bool = false
 var _swipe_start: Vector2 = Vector2.ZERO
 var _swipe_index: int = 0
+var _mouse_swipe_down: bool = false
+var _swipe_cooldown_ms: int = 0
+const SWIPE_DEBOUNCE_MS: int = 120
 var _jump_requested: bool = false
 
 func _ready() -> void:
@@ -54,7 +57,9 @@ func _apply_ui_scale(s: Vector2) -> void:
 	died_label.add_theme_font_size_override("font_size", int(48.0 * f))
 	countdown_label.add_theme_font_size_override("font_size", int(36.0 * f))
 
-func _unhandled_input(event: InputEvent) -> void:
+func _input(event: InputEvent) -> void:
+	# Web often sends left-button mouse for touch; mobile sends ScreenTouch.
+	# Swallow duplicate touch+emulated mouse with debounce in _apply_swipe().
 	if is_dead:
 		return
 	if event is InputEventScreenTouch:
@@ -64,25 +69,50 @@ func _unhandled_input(event: InputEvent) -> void:
 			_swipe_index = t.index
 		else:
 			if t.index == _swipe_index:
-				_apply_swipe(_swipe_start, t.position)
+				_apply_swipe_safe(_swipe_start, t.position)
 		get_viewport().set_input_as_handled()
+		return
+	if event is InputEventMouseButton:
+		var mb: InputEventMouseButton = event
+		if mb.button_index == MOUSE_BUTTON_LEFT:
+			if mb.pressed:
+				_swipe_start = mb.position
+				_mouse_swipe_down = true
+			else:
+				if _mouse_swipe_down:
+					_apply_swipe_safe(_swipe_start, mb.position)
+				_mouse_swipe_down = false
+			get_viewport().set_input_as_handled()
+		return
 
 func _min_swipe_pixels() -> float:
 	var s: Vector2 = get_viewport().get_visible_rect().size
 	return min(s.x, s.y) * SWIPE_MIN_FRACTION
 
-func _apply_swipe(start: Vector2, end: Vector2) -> void:
+func _apply_swipe_safe(start: Vector2, end: Vector2) -> void:
+	var now: int = int(Time.get_ticks_msec())
+	if now - _swipe_cooldown_ms < SWIPE_DEBOUNCE_MS:
+		return
+	if not _apply_swipe(start, end):
+		return
+	_swipe_cooldown_ms = now
+
+func _apply_swipe(start: Vector2, end: Vector2) -> bool:
 	var d: Vector2 = end - start
 	if d.length() < _min_swipe_pixels():
-		return
+		return false
 	if abs(d.x) > abs(d.y):
 		if d.x < 0.0 and target_lane > 0:
 			target_lane -= 1
+			return true
 		elif d.x > 0.0 and target_lane < LANES.size() - 1:
 			target_lane += 1
+			return true
 	else:
 		if d.y < 0.0:
 			_jump_requested = true
+			return true
+	return false
 
 func _physics_process(delta: float) -> void:
 	if is_dead:
