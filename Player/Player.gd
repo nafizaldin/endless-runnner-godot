@@ -17,7 +17,7 @@ const FOV_LANDSCAPE: float = 70.0
 const FOV_PORTRAIT: float = 86.0
 
 ## Min swipe length as a fraction of min(viewport width, height)
-const SWIPE_MIN_FRACTION: float = 0.06
+const SWIPE_MIN_FRACTION: float = 0.04
 
 var starting_point: Vector3 = Vector3.ZERO
 var current_lane: int = 1  # Start at lane index 1 (x = 0)
@@ -26,8 +26,11 @@ var target_lane: int = 1
 var is_jumping: bool = false
 var is_dead: bool = false
 var _swipe_start: Vector2 = Vector2.ZERO
+## Updated every frame while dragging; web often gives same pos on up as down if we do not track motion
+var _swipe_end: Vector2 = Vector2.ZERO
 var _swipe_index: int = 0
 var _mouse_swipe_down: bool = false
+var _touch_pointer_down: bool = false
 var _swipe_cooldown_ms: int = 0
 const SWIPE_DEBOUNCE_MS: int = 120
 var _jump_requested: bool = false
@@ -58,18 +61,31 @@ func _apply_ui_scale(s: Vector2) -> void:
 	countdown_label.add_theme_font_size_override("font_size", int(36.0 * f))
 
 func _input(event: InputEvent) -> void:
-	# Web often sends left-button mouse for touch; mobile sends ScreenTouch.
-	# Swallow duplicate touch+emulated mouse with debounce in _apply_swipe().
+	# Web: touch is often emulated as mouse. Release position can match press unless we
+	# update _swipe_end during InputEventMouseMotion and InputEventScreenDrag.
 	if is_dead:
+		return
+	if event is InputEventScreenDrag:
+		var sdrag: InputEventScreenDrag = event
+		if _touch_pointer_down and sdrag.index == _swipe_index:
+			_swipe_end = sdrag.position
+		return
+	if event is InputEventMouseMotion:
+		if _mouse_swipe_down and (event as InputEventMouseMotion).button_mask & MOUSE_BUTTON_MASK_LEFT:
+			_swipe_end = (event as InputEventMouseMotion).position
 		return
 	if event is InputEventScreenTouch:
 		var t: InputEventScreenTouch = event
 		if t.pressed:
 			_swipe_start = t.position
+			_swipe_end = t.position
 			_swipe_index = t.index
+			_touch_pointer_down = true
 		else:
-			if t.index == _swipe_index:
-				_apply_swipe_safe(_swipe_start, t.position)
+			if t.index == _swipe_index and _touch_pointer_down:
+				_swipe_end = t.position
+				_apply_swipe_safe(_swipe_start, _swipe_end)
+			_touch_pointer_down = false
 		get_viewport().set_input_as_handled()
 		return
 	if event is InputEventMouseButton:
@@ -77,10 +93,12 @@ func _input(event: InputEvent) -> void:
 		if mb.button_index == MOUSE_BUTTON_LEFT:
 			if mb.pressed:
 				_swipe_start = mb.position
+				_swipe_end = mb.position
 				_mouse_swipe_down = true
 			else:
 				if _mouse_swipe_down:
-					_apply_swipe_safe(_swipe_start, mb.position)
+					_swipe_end = mb.position
+					_apply_swipe_safe(_swipe_start, _swipe_end)
 				_mouse_swipe_down = false
 			get_viewport().set_input_as_handled()
 		return
