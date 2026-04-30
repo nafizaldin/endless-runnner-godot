@@ -19,6 +19,12 @@ const FOV_PORTRAIT: float = 86.0
 ## Min swipe length as a fraction of min(viewport width, height)
 const SWIPE_MIN_FRACTION: float = 0.04
 
+## Set false to disable verbose swipe / pointer logging in the console.
+const SWIPE_DEBUG_LOG: bool = true
+## 0 = log every InputEventMouseMotion (very noisy). 100 = at most one line per 100ms while moving.
+const SWIPE_DEBUG_MOTION_LOG_INTERVAL_MS: int = 0
+var _swipe_debug_last_motion_log_ms: int = 0
+
 var starting_point: Vector3 = Vector3.ZERO
 var current_lane: int = 1  # Start at lane index 1 (x = 0)
 var target_lane: int = 1
@@ -42,6 +48,10 @@ func _ready() -> void:
 	var vp: Viewport = get_viewport()
 # warning-ignore:return_value_discarded
 	vp.size_changed.connect(_on_viewport_size_changed)
+	if SWIPE_DEBUG_LOG:
+# warning-ignore:return_value_discarded
+		gui.gui_input.connect(_on_swipe_debug_gui_input)
+		print("[SWIPE_DEBUG] logging ON | Player node + $gui.gui_input | set SWIPE_DEBUG_LOG=false in Player.gd to disable")
 
 func _on_viewport_size_changed() -> void:
 	var s: Vector2 = get_viewport().get_visible_rect().size
@@ -60,9 +70,64 @@ func _apply_ui_scale(s: Vector2) -> void:
 	died_label.add_theme_font_size_override("font_size", int(48.0 * f))
 	countdown_label.add_theme_font_size_override("font_size", int(36.0 * f))
 
+func _swipe_debug_is_pointer_event(e: InputEvent) -> bool:
+	return (
+		e is InputEventScreenTouch
+		or e is InputEventScreenDrag
+		or e is InputEventMouseButton
+		or e is InputEventMouseMotion
+		or e is InputEventMagnifyGesture
+		or e is InputEventPanGesture
+	)
+
+func _on_swipe_debug_gui_input(e: InputEvent) -> void:
+	# With mouse_filter=IGNORE, this may never fire; if it does, you will see it here.
+	_swipe_debug_log_line("Player.$gui.gui_input", e)
+
+func _unhandled_input(event: InputEvent) -> void:
+	if not SWIPE_DEBUG_LOG or not _swipe_debug_is_pointer_event(event):
+		return
+	# If you see the same event here and in _input, that event was not marked "handled" earlier.
+	_swipe_debug_log_line("Player._unhandled_input (still unhandled)", event)
+
+## Console lines all start with [SWIPE_DEBUG] for easy copy-paste to the dev.
+func _swipe_debug_log_line(context: String, e: InputEvent) -> void:
+	if not SWIPE_DEBUG_LOG:
+		return
+	if e is InputEventMouseMotion and SWIPE_DEBUG_MOTION_LOG_INTERVAL_MS > 0:
+		var t2: int = int(Time.get_ticks_msec())
+		if t2 - _swipe_debug_last_motion_log_ms < SWIPE_DEBUG_MOTION_LOG_INTERVAL_MS:
+			return
+		_swipe_debug_last_motion_log_ms = t2
+	var line: String = "[SWIPE_DEBUG] " + context
+	line += " | dead=" + str(is_dead)
+	line += " | vp=" + str(get_viewport().get_visible_rect().size)
+	line += " | " + e.get_class() + " | " + e.as_text()
+	if e is InputEventScreenTouch:
+		var st: InputEventScreenTouch = e
+		line += " | index=" + str(st.index) + " pos=" + str(st.position) + " pressed=" + str(st.pressed)
+	if e is InputEventScreenDrag:
+		var sd: InputEventScreenDrag = e
+		line += " | index=" + str(sd.index) + " pos=" + str(sd.position) + " rel=" + str(sd.relative)
+	if e is InputEventMouseButton:
+		var mb: InputEventMouseButton = e
+		line += " | btn=" + str(mb.button_index) + " pos=" + str(mb.position) + " pressed=" + str(mb.pressed) + " 2x=" + str(mb.doubleclick)
+	if e is InputEventMouseMotion:
+		var mm: InputEventMouseMotion = e
+		line += " | pos=" + str(mm.position) + " rel=" + str(mm.relative) + " mask=" + str(mm.button_mask)
+	if e is InputEventMagnifyGesture:
+		var mg: InputEventMagnifyGesture = e
+		line += " | pos=" + str(mg.position) + " factor=" + str(mg.factor)
+	if e is InputEventPanGesture:
+		var pg: InputEventPanGesture = e
+		line += " | pos=" + str(pg.position) + " delta=" + str(pg.delta)
+	print(line)
+
 func _input(event: InputEvent) -> void:
 	# Web: touch is often emulated as mouse. Release position can match press unless we
 	# update _swipe_end during InputEventMouseMotion and InputEventScreenDrag.
+	if SWIPE_DEBUG_LOG and _swipe_debug_is_pointer_event(event):
+		_swipe_debug_log_line("Player._input", event)
 	if is_dead:
 		return
 	if event is InputEventScreenDrag:
@@ -108,8 +173,18 @@ func _min_swipe_pixels() -> float:
 	return min(s.x, s.y) * SWIPE_MIN_FRACTION
 
 func _apply_swipe_safe(start: Vector2, end: Vector2) -> void:
+	if SWIPE_DEBUG_LOG:
+		var dist: float = start.distance_to(end)
+		var min_px: float = _min_swipe_pixels()
+		print(
+			"[SWIPE_DEBUG] _apply_swipe_safe | start=",
+			start, " end=", end, " dist=", snappedf(dist, 0.1), " min_px=", snappedf(min_px, 0.1),
+			" | touch_down=", _touch_pointer_down, " mouse_down=", _mouse_swipe_down
+		)
 	var now: int = int(Time.get_ticks_msec())
 	if now - _swipe_cooldown_ms < SWIPE_DEBOUNCE_MS:
+		if SWIPE_DEBUG_LOG:
+			print("[SWIPE_DEBUG] _apply_swipe_safe SKIPPED (debounce ", SWIPE_DEBOUNCE_MS, "ms)")
 		return
 	if not _apply_swipe(start, end):
 		return
@@ -118,18 +193,35 @@ func _apply_swipe_safe(start: Vector2, end: Vector2) -> void:
 func _apply_swipe(start: Vector2, end: Vector2) -> bool:
 	var d: Vector2 = end - start
 	if d.length() < _min_swipe_pixels():
+		if SWIPE_DEBUG_LOG:
+			print(
+				"[SWIPE_DEBUG] _apply_swipe | REJECT: too short | |d|=",
+				snappedf(d.length(), 0.1), " < min=", snappedf(_min_swipe_pixels(), 0.1)
+			)
 		return false
 	if abs(d.x) > abs(d.y):
 		if d.x < 0.0 and target_lane > 0:
+			if SWIPE_DEBUG_LOG:
+				print("[SWIPE_DEBUG] _apply_swipe | LANE left (swipe left)")
 			target_lane -= 1
 			return true
 		elif d.x > 0.0 and target_lane < LANES.size() - 1:
+			if SWIPE_DEBUG_LOG:
+				print("[SWIPE_DEBUG] _apply_swipe | LANE right (swipe right)")
 			target_lane += 1
 			return true
+		if SWIPE_DEBUG_LOG:
+			print("[SWIPE_DEBUG] _apply_swipe | horizontal swipe but no lane change | d=", d, " lane=", target_lane)
 	else:
 		if d.y < 0.0:
+			if SWIPE_DEBUG_LOG:
+				print("[SWIPE_DEBUG] _apply_swipe | JUMP (swipe up)")
 			_jump_requested = true
 			return true
+		if SWIPE_DEBUG_LOG:
+			print("[SWIPE_DEBUG] _apply_swipe | vertical swipe not up (no jump) | d=", d)
+	if SWIPE_DEBUG_LOG:
+		print("[SWIPE_DEBUG] _apply_swipe | no action matched | d=", d, " target_lane=", target_lane)
 	return false
 
 func _physics_process(delta: float) -> void:
