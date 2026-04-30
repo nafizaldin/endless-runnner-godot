@@ -4,8 +4,9 @@ importer="texture"
 type="CompressedTexture2D"
 uid="uid://damdmn814n31w"
 path.s3tc="res://.godot/imported/snowy_road_diorama_1.png-bc6fe42a169fb6c7021fb5a0cc46e0ee.s3tc.ctex"
+path.etc2="res://.godot/imported/snowy_road_diorama_1.png-bc6fe42a169fb6c7021fb5a0cc46e0ee.etc2.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc"],
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
 "vram_texture": true
 }
 generator_parameters={}
@@ -13,7 +14,7 @@ generator_parameters={}
 [deps]
 
 source_file="res://assets/snowy_road/snowy_road_diorama_1.png"
-dest_files=["res://.godot/imported/snowy_road_diorama_1.png-bc6fe42a169fb6c7021fb5a0cc46e0ee.s3tc.ctex"]
+dest_files=["res://.godot/imported/snowy_road_diorama_1.png-bc6fe42a169fb6c7021fb5a0cc46e0ee.s3tc.ctex", "res://.godot/imported/snowy_road_diorama_1.png-bc6fe42a169fb6c7021fb5a0cc46e0ee.etc2.ctex"]
 
 [params]
 
